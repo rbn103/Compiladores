@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motor de Detección DDoS - USIL</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="contenedor-header">
+            <h1>Motor de Análisis de Tráfico DDoS</h1>
+            <p>Detección de Ataques de Red Mediante Compilador de Cuatro Fases (2026)</p>
+        </div>
+    </header>
+
+    <div class="contenedor-principal">
+        <!-- PANEL IZQUIERDO: entrada y configuración -->
+        <section class="panel-editor">
+            <h2>Entrada de Tráfico</h2>
+            <p class="instruccion">Sube un archivo CSV o JSON con registros NetFlow para su análisis.</p>
+
+            <div class="caja-archivo">
+                <label for="fileUpload" class="zona-archivo" id="zonaArchivo">
+                    <svg class="zona-archivo-icono" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <span class="zona-archivo-texto">
+                        Arrastra un archivo o <span class="zona-archivo-link">haz clic para seleccionar</span>
+                    </span>
+                    <span class="zona-archivo-formatos">.csv &nbsp;·&nbsp; .json</span>
+                    <span id="zonaArchivoNombre" class="zona-archivo-nombre" style="display:none;"></span>
+                </label>
+                <input type="file" id="fileUpload" accept=".csv,.json" style="display:none;">
+            </div>
+
+            <p id="estadoArchivo" style="display:none;"></p>
+
+            <!-- Preview de registros -->
+            <details id="panelPreview" style="display:none;" class="tarjeta" style="padding:0;">
+                <summary style="cursor:pointer;padding:10px 14px;font-weight:600;color:#38bdf8;list-style:none;display:flex;align-items:center;gap:8px;">
+                    <span id="labelPreview">▶ Vista Previa</span>
+                </summary>
+                <div style="overflow-x:auto;overflow-y:auto;max-height:400px;margin-top:8px;">
+                    <table class="tabla-academica" id="tablaPreview">
+                        <thead id="theadPreview" style="position:sticky;top:0;z-index:1;"></thead>
+                        <tbody id="tbodyPreview"></tbody>
+                    </table>
+                </div>
+            </details>
+
+            <button id="btnProcesar" onclick="procesarMotor()">Analizar Tráfico</button>
+
+            <!-- Reporte de ingesta -->
+            <div class="tarjeta mt-20" id="panelIngesta" style="display:none;">
+                <h3>Fase 0 — Ingesta</h3>
+                <div class="caja-consola" id="outIngesta"></div>
+            </div>
+
+            <!-- Tokens (Fase 1) -->
+            <div class="tarjeta mt-20">
+                <h3>Fase 1 — Tokens Detectados</h3>
+                <table class="tabla-academica">
+                    <thead><tr><th>Tipo de Token</th><th>Cantidad</th></tr></thead>
+                    <tbody id="outTokens"><tr class="placeholder-texto"><td colspan="2">Esperando análisis...</td></tr></tbody>
+                </table>
+            </div>
+
+            <!-- Reglas léxicas (regex teórico) -->
+            <div class="tarjeta mt-20" id="panelRegexTeorico" style="display:none;">
+                <h3>Fase 1 — Reglas Léxicas (Regex Teórico)</h3>
+                <div style="overflow-x:auto;">
+                    <table class="tabla-academica">
+                        <thead><tr><th>Token</th><th>Patrón</th><th>Ejemplo</th></tr></thead>
+                        <tbody id="tbodyRegexTeorico"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- AFD Léxico -->
+            <div class="tarjeta mt-20" id="panelAFD">
+                <h3>3.1 Análisis Léxico — AFD <span class="badge-live">LIVE</span></h3>
+                <p class="instruccion">Estados activos según el flujo procesado. Haz clic en un estado para ver su descripción.</p>
+
+                <svg id="svgAFD" xmlns="http://www.w3.org/2000/svg"></svg>
+
+                <div id="afd-info-card" class="afd-info-card" style="display:none;">
+                    <strong id="afd-info-label"></strong> — <span id="afd-info-sub" class="afd-info-sub"></span>
+                    <p id="afd-info-desc"></p>
+                </div>
+
+                <div class="afd-simulador">
+                    <p class="instruccion" style="margin-bottom:10px;">Simulador de flujo individual</p>
+                    <div class="afd-sim-fila">
+                        <select id="simProtocolo" class="sim-select" onchange="actualizarSimForm()">
+                            <option>TCP</option><option>UDP</option><option>ICMP</option><option>otro</option>
+                        </select>
+                        <span id="simGrupoFlags" class="sim-grupo">
+                            <select id="simFlags" class="sim-select">
+                                <option value="SYN">SYN</option>
+                                <option value="SYN,ACK">SYN,ACK</option>
+                                <option value="ACK">ACK</option>
+                                <option value="FIN,ACK">FIN,ACK</option>
+                                <option value="PSH,ACK">PSH,ACK</option>
+                            </select>
+                            <input type="number" id="simDstPort" class="sim-input" placeholder="dst_port" value="80" min="0" max="65535">
+                        </span>
+                        <span id="simGrupoSrcPort" class="sim-grupo" style="display:none;">
+                            <input type="number" id="simSrcPort" class="sim-input" placeholder="src_port (UDP)" value="53" min="0" max="65535">
+                        </span>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:10px;">
+                        <button class="btn-sim" onclick="ejecutarSimulador()">Simular</button>
+                        <button class="btn-sim btn-sim-reset" onclick="resetAFD()">Reset</button>
+                    </div>
+                    <div id="simResultado" class="sim-resultado" style="display:none;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL DERECHO: resultados del compilador -->
+        <section class="panel-resultados">
+            <h2>Pipeline del Compilador</h2>
+
+            <!-- Fase 2: árbol sintáctico -->
+            <div class="tarjeta">
+                <h3>Fase 2 — Árbol Sintáctico por Ventana Temporal</h3>
+                <div class="contenedor-arbol" id="outArbol">
+                    <span class="placeholder-texto">Esperando análisis sintáctico...</span>
+                </div>
+            </div>
+
+            <!-- Fase 3: semántica y ataque -->
+            <div class="tarjeta tarjeta-ejecucion" id="panelAtaque">
+                <h3>Fase 3 — Tipo de Ataque Detectado</h3>
+                <div class="item-semantico">
+                    <strong>Ataque:</strong>
+                    <span id="lblTipoAtaque" class="badge-ataque">-</span>
+                </div>
+                <div class="item-semantico"><strong>Severidad:</strong> <span id="lblSeveridad">-</span></div>
+                <div class="item-semantico"><strong>Objetivo:</strong> <span id="lblObjetivo">-</span></div>
+                <div class="item-semantico" style="font-style:italic;color:#94a3b8;"><span id="lblRegla">-</span></div>
+
+                <h4>Métricas Pico</h4>
+                <div class="grilla-metricas" id="gridMetricas"></div>
+            </div>
+
+            <!-- Fuentes top -->
+            <div class="tarjeta" id="panelFuentes" style="display:none;">
+                <h3>Top Fuentes de Ataque</h3>
+                <table class="tabla-academica">
+                    <thead><tr><th>IP Origen</th><th>Paquetes</th><th>% del total</th></tr></thead>
+                    <tbody id="tbodyFuentes"></tbody>
+                </table>
+            </div>
+
+            <!-- Fase 4: mitigación -->
+            <div class="tarjeta tarjeta-ejecucion">
+                <h3>Fase 4 — Acciones de Mitigación</h3>
+                <ul id="listAcciones" class="lista-mitigacion">
+                    <li class="placeholder-lista">Las acciones se generarán al procesar.</li>
+                </ul>
+
+                <h4>Reglas de Firewall
+                    <button class="btn-copiar" id="btnCopiarReglas" onclick="copiarReglas()" style="display:none;">
+                        Copiar reglas
+                    </button>
+                </h4>
+                <div class="caja-consola" id="outReglas">
+                    <span class="placeholder-texto">Esperando análisis...</span>
+                </div>
+            </div>
+
+            <!-- Notificación -->
+            <div class="tarjeta mt-20">
+                <h3>Correo de reporte automático</h3>
+                <input type="email" id="inpCorreo" placeholder="correo@destino.com" class="campo-texto">
+                <p style="font-size:12px;color:#94a3b8;margin-top:6px;">El reporte se enviará automáticamente al finalizar el análisis.</p>
+                <p id="estadoNotificacion" style="font-size:13px;margin-top:8px;"></p>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/afd.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
