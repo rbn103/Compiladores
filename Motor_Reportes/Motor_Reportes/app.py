@@ -1,3 +1,5 @@
+import sys
+import os
 import io
 from flask import Flask, render_template, request, jsonify
 from backend.ingestion import IngestorTrafico
